@@ -1,15 +1,31 @@
-# chatsh
+# csh
 
-To install dependencies:
+A minimalist CLI for research, web search, information gathering, task planning, and prompt generation.
+
+## Installation
 
 ```bash
 bun install
 ```
 
-To run:
+## Usage
 
 ```bash
-bun run 
+bun run index.ts
 ```
 
-This project was created using `bun init` in bun v1.3.6. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+### Commands
+
+- `/clear` - Clear session history
+- `/help` - Show available commands
+- `/exit` - Save session and exit
+
+## Configuration
+
+Set your Gemini API key as an environment variable:
+
+```bash
+export GEMINI_API_KEY="your-api-key"
+```
+
+Sessions are saved to `~/.csh/sessions/`.
