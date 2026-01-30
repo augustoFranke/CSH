@@ -41,3 +41,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Local agent instructions
 AGENTS.md
+
+# Session transcripts
+session-*.md
