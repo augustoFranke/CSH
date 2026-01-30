@@ -1,13 +1,9 @@
-const BANNER = `
-   _____ _____ _   _ 
-  / ____/ ____| | | |
- | |   | (___ | |_| |
- | |    \\___ \\|  _  |
- | |___ ____) | | | |
-  \\____|_____/|_| |_|
-`;
+import figlet from "figlet";
 
 export function showBanner(): void {
-  process.stdout.write(BANNER);
+  const banner = figlet.textSync("CSH", {
+    font: "ANSI Shadow",
+  });
+  console.log(`\x1b[97m${banner}\x1b[0m`);
   console.log("  Research & Prompt CLI\n");
 }
