@@ -12,7 +12,8 @@ export async function readInput(): Promise<InputResult> {
     let input = "";
     let cursorPos = 0;
     let selectedIndex = 0;
-    let menuActive = false;
+    let menuVisible = false;
+    let lastMenuHeight = 0;
 
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
@@ -20,13 +21,45 @@ export async function readInput(): Promise<InputResult> {
     process.stdin.resume();
     process.stdin.setEncoding("utf8");
 
-    const shouldShowMenu = () => input === "/";
+    const getFilteredCommands = () => {
+      if (!input.startsWith("/")) return [];
+      return commands.filter((cmd) =>
+        cmd.name.toLowerCase().startsWith(input.toLowerCase())
+      );
+    };
+
+    const clearMenu = () => {
+      if (lastMenuHeight > 0) {
+        process.stdout.write("\x1b[s");
+        for (let i = 0; i < lastMenuHeight; i++) {
+          process.stdout.write("\n\x1b[2K");
+        }
+        process.stdout.write("\x1b[u");
+        lastMenuHeight = 0;
+      }
+    };
 
     const renderMenu = () => {
-      process.stdout.write("\x1b[s");
+      const filtered = getFilteredCommands();
       
-      for (let i = 0; i < commands.length; i++) {
-        const cmd = commands[i]!;
+      clearMenu();
+
+      if (filtered.length === 0) {
+        menuVisible = false;
+        return;
+      }
+
+      menuVisible = true;
+      lastMenuHeight = filtered.length;
+
+      if (selectedIndex >= filtered.length) {
+        selectedIndex = filtered.length - 1;
+      }
+
+      process.stdout.write("\x1b[s");
+
+      for (let i = 0; i < filtered.length; i++) {
+        const cmd = filtered[i]!;
         process.stdout.write("\n\x1b[2K");
         if (i === selectedIndex) {
           process.stdout.write(`\x1b[48;5;236m> ${cmd.name}  ${cmd.description}\x1b[0m`);
@@ -34,27 +67,17 @@ export async function readInput(): Promise<InputResult> {
           process.stdout.write(`\x1b[48;5;236m  ${cmd.name}  ${cmd.description}\x1b[0m`);
         }
       }
-      
-      process.stdout.write("\x1b[u");
-    };
 
-    const clearMenu = () => {
-      process.stdout.write("\x1b[s");
-      for (let i = 0; i < commands.length; i++) {
-        process.stdout.write("\n\x1b[2K");
-      }
       process.stdout.write("\x1b[u");
     };
 
     const redrawInput = () => {
       process.stdout.write(`\r\x1b[2K${PROMPT}${input}`);
+      process.stdout.write(`\r\x1b[${PROMPT.length + cursorPos}C`);
     };
 
     const cleanup = () => {
-      if (menuActive) {
-        clearMenu();
-        menuActive = false;
-      }
+      clearMenu();
       process.stdin.removeListener("data", onData);
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
@@ -70,47 +93,45 @@ export async function readInput(): Promise<InputResult> {
       }
 
       if (key === "\r" || key === "\n") {
-        if (menuActive) {
-          clearMenu();
-          const selected = commands[selectedIndex]!;
-          input = selected.name;
-          menuActive = false;
-          cleanup();
-          process.stdout.write(`\r\x1b[2K${PROMPT}${input}\n`);
-          resolve({ value: input, cancelled: false });
-        } else {
-          cleanup();
-          process.stdout.write("\n");
-          resolve({ value: input, cancelled: false });
+        const filtered = getFilteredCommands();
+        if (menuVisible && filtered.length > 0 && filtered[selectedIndex]) {
+          input = filtered[selectedIndex]!.name;
+        }
+        cleanup();
+        process.stdout.write(`\r\x1b[2K${PROMPT}${input}\n`);
+        resolve({ value: input, cancelled: false });
+        return;
+      }
+
+      if (key === "\x1b[A") {
+        if (menuVisible) {
+          const filtered = getFilteredCommands();
+          if (filtered.length > 0) {
+            clearMenu();
+            selectedIndex = (selectedIndex - 1 + filtered.length) % filtered.length;
+            renderMenu();
+          }
         }
         return;
       }
 
-      if (menuActive) {
-        if (key === "\x1b[A") {
-          clearMenu();
-          selectedIndex = (selectedIndex - 1 + commands.length) % commands.length;
-          renderMenu();
-          return;
+      if (key === "\x1b[B") {
+        if (menuVisible) {
+          const filtered = getFilteredCommands();
+          if (filtered.length > 0) {
+            clearMenu();
+            selectedIndex = (selectedIndex + 1) % filtered.length;
+            renderMenu();
+          }
         }
+        return;
+      }
 
-        if (key === "\x1b[B") {
+      if (key === "\x1b") {
+        if (menuVisible) {
           clearMenu();
-          selectedIndex = (selectedIndex + 1) % commands.length;
-          renderMenu();
-          return;
+          menuVisible = false;
         }
-
-        if (key === "\x1b" || key === "\x7f" || key === "\b") {
-          clearMenu();
-          menuActive = false;
-          input = "";
-          cursorPos = 0;
-          selectedIndex = 0;
-          redrawInput();
-          return;
-        }
-
         return;
       }
 
@@ -118,7 +139,14 @@ export async function readInput(): Promise<InputResult> {
         if (cursorPos > 0) {
           input = input.slice(0, cursorPos - 1) + input.slice(cursorPos);
           cursorPos--;
+          selectedIndex = 0;
           redrawInput();
+          if (input.startsWith("/")) {
+            renderMenu();
+          } else {
+            clearMenu();
+            menuVisible = false;
+          }
         }
         return;
       }
@@ -142,13 +170,14 @@ export async function readInput(): Promise<InputResult> {
       if (key >= " " && key <= "~") {
         input = input.slice(0, cursorPos) + key + input.slice(cursorPos);
         cursorPos++;
+        selectedIndex = 0;
         redrawInput();
-        process.stdout.write(`\r\x1b[${PROMPT.length + cursorPos}C`);
 
-        if (shouldShowMenu()) {
-          menuActive = true;
-          selectedIndex = 0;
+        if (input.startsWith("/")) {
           renderMenu();
+        } else {
+          clearMenu();
+          menuVisible = false;
         }
         return;
       }
