@@ -6,13 +6,15 @@ import {
   clearSession,
   addMessage,
 } from "./session.ts";
+import { renderMarkdown } from "./markdown.ts";
+import { showCommands, isCommandPrefix } from "./commands.ts";
 import type { Session } from "./types.ts";
 
 const PROMPT = "> ";
 
 function showHelp(): void {
   console.log("csh - Research & Prompt CLI");
-  console.log("Commands: /clear, /help, /exit");
+  console.log("Type / to see available commands");
   console.log("");
 }
 
@@ -31,7 +33,7 @@ function handleCommand(
       return { session: clearedSession, chat: newChat, shouldExit: false };
 
     case "/help":
-      showHelp();
+      showCommands();
       return { session, chat, shouldExit: false };
 
     case "/exit":
@@ -39,7 +41,8 @@ function handleCommand(
       return { session, chat, shouldExit: true };
 
     default:
-      console.log(`Unknown command: ${cmd}\n`);
+      console.log(`Unknown command: ${cmd}`);
+      showCommands();
       return { session, chat, shouldExit: false };
   }
 }
@@ -69,6 +72,12 @@ export async function startChat(initialSession?: Session): Promise<void> {
       continue;
     }
 
+    if (isCommandPrefix(input)) {
+      showCommands();
+      process.stdout.write(PROMPT);
+      continue;
+    }
+
     if (input.startsWith("/")) {
       const result = handleCommand(input, session, chat);
       session = result.session;
@@ -89,8 +98,7 @@ export async function startChat(initialSession?: Session): Promise<void> {
       session = addMessage(session, "model", response);
 
       console.log("");
-      console.log(response);
-      console.log("");
+      process.stdout.write(renderMarkdown(response));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Error: ${message}\n`);
