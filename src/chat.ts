@@ -7,10 +7,9 @@ import {
   addMessage,
 } from "./session.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { pickCommand, showCommands, isCommandPrefix } from "./commands.ts";
+import { showCommands } from "./commands.ts";
+import { readInput } from "./input.ts";
 import type { Session } from "./types.ts";
-
-const PROMPT = "> ";
 
 function showHelp(): void {
   console.log("csh - Research & Prompt CLI");
@@ -62,29 +61,15 @@ export async function startChat(initialSession?: Session): Promise<void> {
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
-  process.stdout.write(PROMPT);
+  while (true) {
+    const { value: input, cancelled } = await readInput();
 
-  for await (const line of console) {
-    const input = line.trim();
-
-    if (!input) {
-      process.stdout.write(PROMPT);
-      continue;
+    if (cancelled) {
+      await cleanup();
+      return;
     }
 
-    if (isCommandPrefix(input)) {
-      const selectedCommand = await pickCommand();
-      if (selectedCommand) {
-        const result = handleCommand(selectedCommand, session, chat);
-        session = result.session;
-        chat = result.chat;
-
-        if (result.shouldExit) {
-          await cleanup();
-          return;
-        }
-      }
-      process.stdout.write(PROMPT);
+    if (!input.trim()) {
       continue;
     }
 
@@ -97,8 +82,6 @@ export async function startChat(initialSession?: Session): Promise<void> {
         await cleanup();
         return;
       }
-
-      process.stdout.write(PROMPT);
       continue;
     }
 
@@ -113,9 +96,5 @@ export async function startChat(initialSession?: Session): Promise<void> {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Error: ${message}\n`);
     }
-
-    process.stdout.write(PROMPT);
   }
-
-  await cleanup();
 }
