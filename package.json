@@ -2,6 +2,9 @@
   "name": "csh",
   "version": "0.1.0",
   "private": true,
+  "scripts": {
+    "start": "bun run index.ts"
+  },
   "bin": {
     "csh": "./index.ts"
   },
