@@ -1,4 +1,3 @@
-import * as readline from "readline";
 import { commands } from "./commands.ts";
 
 const PROMPT = "> ";
@@ -13,93 +12,96 @@ export async function readInput(): Promise<InputResult> {
     let input = "";
     let cursorPos = 0;
     let selectedIndex = 0;
-    let showingSuggestions = false;
-    let filteredCommands: typeof commands = [];
-
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true,
-    });
+    let suggestionsVisible = false;
+    let lastSuggestionCount = 0;
 
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
     }
     process.stdin.resume();
+    process.stdin.setEncoding("utf8");
+
+    const getFilteredCommands = () => {
+      if (!input.startsWith("/")) return [];
+      return commands.filter((cmd) =>
+        cmd.name.toLowerCase().startsWith(input.toLowerCase())
+      );
+    };
 
     const clearSuggestions = () => {
-      if (showingSuggestions && filteredCommands.length > 0) {
-        process.stdout.write(`\x1b[${filteredCommands.length}A`);
-        for (let i = 0; i < filteredCommands.length; i++) {
-          process.stdout.write("\x1b[2K\x1b[1B");
+      if (lastSuggestionCount > 0) {
+        process.stdout.write("\x1b[s");
+        process.stdout.write("\n");
+        for (let i = 0; i < lastSuggestionCount; i++) {
+          process.stdout.write("\x1b[2K");
+          if (i < lastSuggestionCount - 1) {
+            process.stdout.write("\n");
+          }
         }
-        process.stdout.write(`\x1b[${filteredCommands.length}A`);
+        process.stdout.write("\x1b[u");
+        lastSuggestionCount = 0;
       }
     };
 
-    const renderSuggestions = () => {
-      filteredCommands = input.startsWith("/")
-        ? commands.filter((cmd) =>
-            cmd.name.toLowerCase().startsWith(input.toLowerCase())
-          )
-        : [];
+    const render = () => {
+      clearSuggestions();
 
-      if (filteredCommands.length === 0) {
-        showingSuggestions = false;
-        return;
-      }
-
-      showingSuggestions = true;
-      process.stdout.write("\n");
-
-      for (let i = 0; i < filteredCommands.length; i++) {
-        const cmd = filteredCommands[i]!;
-        const prefix = i === selectedIndex ? "> " : "  ";
-        const highlight = i === selectedIndex ? "\x1b[7m" : "";
-        const reset = i === selectedIndex ? "\x1b[0m" : "";
-        process.stdout.write(
-          `\x1b[2K${prefix}${highlight}${cmd.name}${reset}  ${cmd.description}\n`
-        );
-      }
-
-      process.stdout.write(`\x1b[${filteredCommands.length + 1}A`);
-      process.stdout.write(`\x1b[${PROMPT.length + cursorPos}G`);
-    };
-
-    const redrawLine = () => {
       process.stdout.write(`\r\x1b[2K${PROMPT}${input}`);
-      process.stdout.write(`\x1b[${PROMPT.length + cursorPos + 1}G`);
+
+      const filtered = getFilteredCommands();
+
+      if (filtered.length > 0 && input.length > 0) {
+        suggestionsVisible = true;
+        lastSuggestionCount = filtered.length;
+
+        if (selectedIndex >= filtered.length) {
+          selectedIndex = filtered.length - 1;
+        }
+
+        process.stdout.write("\x1b[s");
+
+        for (let i = 0; i < filtered.length; i++) {
+          const cmd = filtered[i]!;
+          process.stdout.write("\n\x1b[2K");
+          if (i === selectedIndex) {
+            process.stdout.write(`\x1b[7m> ${cmd.name}\x1b[0m  ${cmd.description}`);
+          } else {
+            process.stdout.write(`  ${cmd.name}  ${cmd.description}`);
+          }
+        }
+
+        process.stdout.write("\x1b[u");
+      } else {
+        suggestionsVisible = false;
+      }
+
+      process.stdout.write(`\r\x1b[${PROMPT.length + cursorPos}C`);
     };
 
     const cleanup = () => {
       clearSuggestions();
+      process.stdin.removeListener("data", onData);
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
       }
-      rl.close();
     };
 
-    process.stdout.write(PROMPT);
-
-    process.stdin.on("data", (key: Buffer) => {
-      const char = key.toString();
-
-      if (char === "\x03") {
+    const onData = (key: string) => {
+      if (key === "\x03") {
         cleanup();
         process.stdout.write("\n");
         resolve({ value: "", cancelled: true });
         return;
       }
 
-      if (char === "\r" || char === "\n") {
-        if (showingSuggestions && filteredCommands.length > 0) {
-          clearSuggestions();
-          input = filteredCommands[selectedIndex]!.name;
+      if (key === "\r" || key === "\n") {
+        const filtered = getFilteredCommands();
+        if (suggestionsVisible && filtered.length > 0) {
+          input = filtered[selectedIndex]!.name;
           cursorPos = input.length;
-          showingSuggestions = false;
           selectedIndex = 0;
-          filteredCommands = [];
-          redrawLine();
+          suggestionsVisible = false;
+          render();
         } else {
           cleanup();
           process.stdout.write("\n");
@@ -108,58 +110,73 @@ export async function readInput(): Promise<InputResult> {
         return;
       }
 
-      if (char === "\x1b[A") {
-        if (showingSuggestions && filteredCommands.length > 0) {
-          clearSuggestions();
-          selectedIndex =
-            (selectedIndex - 1 + filteredCommands.length) %
-            filteredCommands.length;
-          renderSuggestions();
+      if (key === "\x1b[A") {
+        if (suggestionsVisible) {
+          const filtered = getFilteredCommands();
+          if (filtered.length > 0) {
+            selectedIndex = (selectedIndex - 1 + filtered.length) % filtered.length;
+            render();
+          }
         }
         return;
       }
 
-      if (char === "\x1b[B") {
-        if (showingSuggestions && filteredCommands.length > 0) {
-          clearSuggestions();
-          selectedIndex = (selectedIndex + 1) % filteredCommands.length;
-          renderSuggestions();
+      if (key === "\x1b[B") {
+        if (suggestionsVisible) {
+          const filtered = getFilteredCommands();
+          if (filtered.length > 0) {
+            selectedIndex = (selectedIndex + 1) % filtered.length;
+            render();
+          }
         }
         return;
       }
 
-      if (char === "\x1b") {
-        if (showingSuggestions) {
-          clearSuggestions();
-          showingSuggestions = false;
+      if (key === "\x1b") {
+        if (suggestionsVisible) {
+          suggestionsVisible = false;
           selectedIndex = 0;
-          filteredCommands = [];
-          redrawLine();
+          render();
         }
         return;
       }
 
-      if (char === "\x7f" || char === "\b") {
+      if (key === "\x7f" || key === "\b") {
         if (cursorPos > 0) {
-          clearSuggestions();
           input = input.slice(0, cursorPos - 1) + input.slice(cursorPos);
           cursorPos--;
           selectedIndex = 0;
-          redrawLine();
-          renderSuggestions();
+          render();
         }
         return;
       }
 
-      if (char >= " " && char <= "~") {
-        clearSuggestions();
-        input = input.slice(0, cursorPos) + char + input.slice(cursorPos);
-        cursorPos++;
-        selectedIndex = 0;
-        redrawLine();
-        renderSuggestions();
+      if (key === "\x1b[D") {
+        if (cursorPos > 0) {
+          cursorPos--;
+          render();
+        }
         return;
       }
-    });
+
+      if (key === "\x1b[C") {
+        if (cursorPos < input.length) {
+          cursorPos++;
+          render();
+        }
+        return;
+      }
+
+      if (key >= " " && key <= "~") {
+        input = input.slice(0, cursorPos) + key + input.slice(cursorPos);
+        cursorPos++;
+        selectedIndex = 0;
+        render();
+        return;
+      }
+    };
+
+    process.stdout.write(PROMPT);
+    process.stdin.on("data", onData);
   });
 }
