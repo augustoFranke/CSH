@@ -7,7 +7,7 @@ import {
   addMessage,
 } from "./session.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { showCommands, isCommandPrefix } from "./commands.ts";
+import { pickCommand, showCommands, isCommandPrefix } from "./commands.ts";
 import type { Session } from "./types.ts";
 
 const PROMPT = "> ";
@@ -73,7 +73,17 @@ export async function startChat(initialSession?: Session): Promise<void> {
     }
 
     if (isCommandPrefix(input)) {
-      showCommands();
+      const selectedCommand = await pickCommand();
+      if (selectedCommand) {
+        const result = handleCommand(selectedCommand, session, chat);
+        session = result.session;
+        chat = result.chat;
+
+        if (result.shouldExit) {
+          await cleanup();
+          return;
+        }
+      }
       process.stdout.write(PROMPT);
       continue;
     }
