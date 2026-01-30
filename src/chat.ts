@@ -9,12 +9,12 @@ import {
 import { renderMarkdown } from "./markdown.ts";
 import { showCommands } from "./commands.ts";
 import { readInput } from "./input.ts";
+import { showBanner } from "./banner.ts";
 import type { Session } from "./types.ts";
 
 function showHelp(): void {
-  console.log("csh - Research & Prompt CLI");
-  console.log("Type / to see available commands");
-  console.log("");
+  showBanner();
+  console.log("Type / to see available commands\n");
 }
 
 function handleCommand(
@@ -28,7 +28,8 @@ function handleCommand(
     case "/clear":
       const clearedSession = clearSession(session);
       const newChat = createChat([]);
-      console.log("Session cleared.\n");
+      process.stdout.write("\x1b[2J\x1b[H");
+      showHelp();
       return { session: clearedSession, chat: newChat, shouldExit: false };
 
     case "/help":
