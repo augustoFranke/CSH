@@ -12,8 +12,7 @@ export async function readInput(): Promise<InputResult> {
     let input = "";
     let cursorPos = 0;
     let selectedIndex = 0;
-    let suggestionsVisible = false;
-    let lastSuggestionCount = 0;
+    let menuActive = false;
 
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
@@ -21,65 +20,41 @@ export async function readInput(): Promise<InputResult> {
     process.stdin.resume();
     process.stdin.setEncoding("utf8");
 
-    const getFilteredCommands = () => {
-      if (!input.startsWith("/")) return [];
-      return commands.filter((cmd) =>
-        cmd.name.toLowerCase().startsWith(input.toLowerCase())
-      );
-    };
+    const shouldShowMenu = () => input === "/";
 
-    const clearSuggestions = () => {
-      if (lastSuggestionCount > 0) {
-        process.stdout.write("\x1b[s");
-        process.stdout.write("\n");
-        for (let i = 0; i < lastSuggestionCount; i++) {
-          process.stdout.write("\x1b[2K");
-          if (i < lastSuggestionCount - 1) {
-            process.stdout.write("\n");
-          }
+    const renderMenu = () => {
+      process.stdout.write("\x1b[s");
+      
+      for (let i = 0; i < commands.length; i++) {
+        const cmd = commands[i]!;
+        process.stdout.write("\n\x1b[2K");
+        if (i === selectedIndex) {
+          process.stdout.write(`\x1b[48;5;236m> ${cmd.name}  ${cmd.description}\x1b[0m`);
+        } else {
+          process.stdout.write(`\x1b[48;5;236m  ${cmd.name}  ${cmd.description}\x1b[0m`);
         }
-        process.stdout.write("\x1b[u");
-        lastSuggestionCount = 0;
       }
+      
+      process.stdout.write("\x1b[u");
     };
 
-    const render = () => {
-      clearSuggestions();
+    const clearMenu = () => {
+      process.stdout.write("\x1b[s");
+      for (let i = 0; i < commands.length; i++) {
+        process.stdout.write("\n\x1b[2K");
+      }
+      process.stdout.write("\x1b[u");
+    };
 
+    const redrawInput = () => {
       process.stdout.write(`\r\x1b[2K${PROMPT}${input}`);
-
-      const filtered = getFilteredCommands();
-
-      if (filtered.length > 0 && input.length > 0) {
-        suggestionsVisible = true;
-        lastSuggestionCount = filtered.length;
-
-        if (selectedIndex >= filtered.length) {
-          selectedIndex = filtered.length - 1;
-        }
-
-        process.stdout.write("\x1b[s");
-
-        for (let i = 0; i < filtered.length; i++) {
-          const cmd = filtered[i]!;
-          process.stdout.write("\n\x1b[2K");
-          if (i === selectedIndex) {
-            process.stdout.write(`\x1b[7m> ${cmd.name}\x1b[0m  ${cmd.description}`);
-          } else {
-            process.stdout.write(`  ${cmd.name}  ${cmd.description}`);
-          }
-        }
-
-        process.stdout.write("\x1b[u");
-      } else {
-        suggestionsVisible = false;
-      }
-
-      process.stdout.write(`\r\x1b[${PROMPT.length + cursorPos}C`);
     };
 
     const cleanup = () => {
-      clearSuggestions();
+      if (menuActive) {
+        clearMenu();
+        menuActive = false;
+      }
       process.stdin.removeListener("data", onData);
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
@@ -95,16 +70,13 @@ export async function readInput(): Promise<InputResult> {
       }
 
       if (key === "\r" || key === "\n") {
-        const filtered = getFilteredCommands();
-        if (suggestionsVisible && filtered.length > 0) {
-          input = filtered[selectedIndex]!.name;
-          cursorPos = input.length;
-          selectedIndex = 0;
-          suggestionsVisible = false;
-          lastSuggestionCount = 0;
-          clearSuggestions();
+        if (menuActive) {
+          clearMenu();
+          const selected = commands[selectedIndex]!;
+          input = selected.name;
+          menuActive = false;
           cleanup();
-          process.stdout.write("\n");
+          process.stdout.write(`\r\x1b[2K${PROMPT}${input}\n`);
           resolve({ value: input, cancelled: false });
         } else {
           cleanup();
@@ -114,34 +86,31 @@ export async function readInput(): Promise<InputResult> {
         return;
       }
 
-      if (key === "\x1b[A") {
-        if (suggestionsVisible) {
-          const filtered = getFilteredCommands();
-          if (filtered.length > 0) {
-            selectedIndex = (selectedIndex - 1 + filtered.length) % filtered.length;
-            render();
-          }
+      if (menuActive) {
+        if (key === "\x1b[A") {
+          clearMenu();
+          selectedIndex = (selectedIndex - 1 + commands.length) % commands.length;
+          renderMenu();
+          return;
         }
-        return;
-      }
 
-      if (key === "\x1b[B") {
-        if (suggestionsVisible) {
-          const filtered = getFilteredCommands();
-          if (filtered.length > 0) {
-            selectedIndex = (selectedIndex + 1) % filtered.length;
-            render();
-          }
+        if (key === "\x1b[B") {
+          clearMenu();
+          selectedIndex = (selectedIndex + 1) % commands.length;
+          renderMenu();
+          return;
         }
-        return;
-      }
 
-      if (key === "\x1b") {
-        if (suggestionsVisible) {
-          suggestionsVisible = false;
+        if (key === "\x1b" || key === "\x7f" || key === "\b") {
+          clearMenu();
+          menuActive = false;
+          input = "";
+          cursorPos = 0;
           selectedIndex = 0;
-          render();
+          redrawInput();
+          return;
         }
+
         return;
       }
 
@@ -149,8 +118,7 @@ export async function readInput(): Promise<InputResult> {
         if (cursorPos > 0) {
           input = input.slice(0, cursorPos - 1) + input.slice(cursorPos);
           cursorPos--;
-          selectedIndex = 0;
-          render();
+          redrawInput();
         }
         return;
       }
@@ -158,7 +126,7 @@ export async function readInput(): Promise<InputResult> {
       if (key === "\x1b[D") {
         if (cursorPos > 0) {
           cursorPos--;
-          render();
+          process.stdout.write("\x1b[D");
         }
         return;
       }
@@ -166,7 +134,7 @@ export async function readInput(): Promise<InputResult> {
       if (key === "\x1b[C") {
         if (cursorPos < input.length) {
           cursorPos++;
-          render();
+          process.stdout.write("\x1b[C");
         }
         return;
       }
@@ -174,8 +142,14 @@ export async function readInput(): Promise<InputResult> {
       if (key >= " " && key <= "~") {
         input = input.slice(0, cursorPos) + key + input.slice(cursorPos);
         cursorPos++;
-        selectedIndex = 0;
-        render();
+        redrawInput();
+        process.stdout.write(`\r\x1b[${PROMPT.length + cursorPos}C`);
+
+        if (shouldShowMenu()) {
+          menuActive = true;
+          selectedIndex = 0;
+          renderMenu();
+        }
         return;
       }
     };
