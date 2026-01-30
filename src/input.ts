@@ -1,6 +1,9 @@
 import { commands } from "./commands.ts";
+import { HIGHLIGHT, RESET } from "./theme.ts";
 
-const PROMPT = "> ";
+const PROMPT_SYMBOL = ">";
+const PROMPT = `${HIGHLIGHT}${PROMPT_SYMBOL}${RESET} `;
+const PROMPT_LENGTH = 2;
 
 type InputResult = {
   value: string;
@@ -60,11 +63,16 @@ export async function readInput(): Promise<InputResult> {
 
       for (let i = 0; i < filtered.length; i++) {
         const cmd = filtered[i]!;
+        const coloredName = `${HIGHLIGHT}${cmd.name}${RESET}\x1b[48;5;236m`;
         process.stdout.write("\n\x1b[2K");
         if (i === selectedIndex) {
-          process.stdout.write(`\x1b[48;5;236m> ${cmd.name}  ${cmd.description}\x1b[0m`);
+          process.stdout.write(
+            `\x1b[48;5;236m> ${coloredName}  ${cmd.description}\x1b[0m`
+          );
         } else {
-          process.stdout.write(`\x1b[48;5;236m  ${cmd.name}  ${cmd.description}\x1b[0m`);
+          process.stdout.write(
+            `\x1b[48;5;236m  ${coloredName}  ${cmd.description}\x1b[0m`
+          );
         }
       }
 
@@ -73,7 +81,7 @@ export async function readInput(): Promise<InputResult> {
 
     const redrawInput = () => {
       process.stdout.write(`\r\x1b[2K${PROMPT}${input}`);
-      process.stdout.write(`\r\x1b[${PROMPT.length + cursorPos}C`);
+      process.stdout.write(`\r\x1b[${PROMPT_LENGTH + cursorPos}C`);
     };
 
     const cleanup = () => {

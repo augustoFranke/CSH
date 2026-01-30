@@ -1,4 +1,5 @@
 import select from "@inquirer/select";
+import { highlight } from "./theme.ts";
 
 export type Command = {
   name: string;
@@ -7,7 +8,6 @@ export type Command = {
 
 export const commands: Command[] = [
   { name: "/clear", description: "Clear session history" },
-  { name: "/help", description: "Show available commands" },
   { name: "/exit", description: "Save session and exit" },
 ];
 
@@ -29,7 +29,8 @@ export async function pickCommand(): Promise<string | null> {
 export function showCommands(): void {
   console.log("\nAvailable commands:");
   for (const cmd of commands) {
-    console.log(`  ${cmd.name.padEnd(10)} ${cmd.description}`);
+    const name = highlight(cmd.name.padEnd(10));
+    console.log(`  ${name} ${cmd.description}`);
   }
   console.log("");
 }

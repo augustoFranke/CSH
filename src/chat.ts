@@ -32,10 +32,6 @@ function handleCommand(
       showHelp();
       return { session: clearedSession, chat: newChat, shouldExit: false };
 
-    case "/help":
-      showCommands();
-      return { session, chat, shouldExit: false };
-
     case "/exit":
     case "/quit":
       return { session, chat, shouldExit: true };
