@@ -101,7 +101,11 @@ export async function readInput(): Promise<InputResult> {
           cursorPos = input.length;
           selectedIndex = 0;
           suggestionsVisible = false;
-          render();
+          lastSuggestionCount = 0;
+          clearSuggestions();
+          cleanup();
+          process.stdout.write("\n");
+          resolve({ value: input, cancelled: false });
         } else {
           cleanup();
           process.stdout.write("\n");
